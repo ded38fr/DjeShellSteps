@@ -1,0 +1,21 @@
+##########################################################
+# File: djeshellsteps.cfg                                #
+# Version:  1.00                                         #
+# Description:                                           #
+#  Configuration file for djeshellsteps                  #
+##########################################################
+
+#Specify bellow all the directories for DjeShellTools
+BaseDir=/usr/local/dss
+ShDir=$BaseDir/bin
+LogDir=$BaseDir/logs
+DataDir=$BaseDir/datas
+SQLDir=$BaseDir/sql
+IncludeDir=$BaseDir/bin
+CfgDir=$BaseDir/cfg
+
+### DjeShellSteps Options ###
+# Specify if DjeShellSteps can write summary informations to stdout
+DJSOption_StdoutEnabled=1                       # 0: Write only in logfile, 1: Write all informations to log, and stdout
+DJSOption_SummaryInfosToStdout=0                # 0: Do nothing, 1: Write summary informations to stdout (better when DJSOption_StdoutEnabled=0)
+
