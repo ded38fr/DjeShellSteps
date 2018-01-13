@@ -4,15 +4,13 @@
 # them from where last problem occures                                      #
 #############################################################################
 # Author: Jerome DESMOULINS - http://www.desmoulins.fr                      #
-# Version: 1.00 - March, 2007                                               #
-# Build #$Revision-Id$                                                      #
+# Version: 1.01 - December, 2015                                            #
 # Mail: jerome@desmoulins.fr                                                #
 #############################################################################
 
 
-
 ### Internal variables ###
-DJSVersion="1.00"
+DJSVersion="1.01"
 DJSMustRestart=0
 DJSRestartStep=0
 DJSEndOfSteps=0
@@ -21,6 +19,8 @@ DJSEndTime=0
 DJSScriptParams=$*
 DJSDebugMode=0
 DJSScriptPID=$$
+DJSInternalDebug=0
+
 
 # Check if optional variables has been set. If not, setting default values #
 if [ -z "$DJSOption_SummaryInfosToStdout" ]
@@ -43,12 +43,14 @@ fi
 ReadConfigFile()
 {
   set +x
+  InternalDebug "IN"
   if [ -z "$1" ]
   then
     DJSConfigFile="$CfgDir/$ShellName.cfg"
   else
     DJSConfigFile="$1"
   fi
+  InternalDebug "Config file $DJSConfigFile"
   echo "Reading configuration file $DJSConfigFile..."
   if [ -f $DJSConfigFile ] 
   then
@@ -57,6 +59,7 @@ ReadConfigFile()
   else
     echo "[ERROR] $DJSConfigFile does not exist. Failed to read configuration file!"
   fi
+  InternalDebug "OUT"
 }
 
 #############################################################################
@@ -86,6 +89,28 @@ TimeBanner()
 
 
 #############################################################################
+# Function: InternalDebug                                                   #
+#############################################################################
+# Arguments: DebugText                                                      #
+# This internal function is used for debugging purpose                      #
+#############################################################################
+InternalDebug()
+{
+  set +x
+  bleuclair='\e[1;34m'
+  neutre='\e[0;m'
+  if [ $DJSInternalDebug -eq 1 ]
+  then
+    echo -e "`TimeBanner`[DEBUG][${FUNCNAME[ 1 ]}] $1"
+  fi
+  if [ $DJSDebugMode -eq 1 ]
+  then
+    set -x
+  fi
+}
+
+
+#############################################################################
 # Function: CreateRstFile                                                   #
 #############################################################################
 # Arguments: Step, ErrorCode                                                #
@@ -93,13 +118,16 @@ TimeBanner()
 #############################################################################
 CreateRstFile()
 {
+	InternalDebug "IN"
 	echo "STEP $1 - RETURN CODE $2" > $LogDir/$ShellName.rst
 	if test $? -ne 0
 	then
 		echo "Failed to write restart file contents. (Error 501)"
 		exit 501
 	fi
+	InternalDebug "OUT"
 }
+
 
 #############################################################################
 # Function: RemoveRstFile                                                   #
@@ -109,6 +137,7 @@ CreateRstFile()
 #############################################################################
 RemoveRstFile()
 {
+	InternalDebug "IN"
 	if test -f $LogDir/$ShellName.rst
 	then
 		rm $LogDir/$ShellName.rst
@@ -118,7 +147,9 @@ RemoveRstFile()
 		  exit 502
 		fi
 	fi
+	InternalDebug "OUT"
 }
+
 
 #############################################################################
 # Function: RemovePidFile                                                   #
@@ -128,6 +159,7 @@ RemoveRstFile()
 #############################################################################
 RemovePidFile()
 {
+	InternalDebug "IN"
 	if test -f $LogDir/$ShellName.pid
 	then
 		rm $LogDir/$ShellName.pid
@@ -137,7 +169,9 @@ RemovePidFile()
 		  exit 506
 		fi
 	fi
+	InternalDebug "OUT"
 }
+
 
 #############################################################################
 # Function: WriteSummaryInfo                                                #
@@ -153,6 +187,99 @@ WriteSummaryInfo()
     fi
 }
 
+
+#############################################################################
+# Function: DJSDisplayStatus                                                #
+#############################################################################
+# Arguments: Display script status                                          #
+# This function check script status (Running, or not)                       #
+#############################################################################
+DJSDisplayStatus()
+{
+	if test -f $LogDir/$ShellName.pid
+	then
+		DJSPID=`cat $LogDir/$ShellName.pid`
+		if kill -0 $DJSPID > /dev/null 2>&1; then
+			DJSStatus="RUNNING"
+		else	
+			DJSStatus="FAILED "
+		fi
+	else
+		DJSStatus="STOPPED"
+	fi
+	printf "$ShellName status   [%7s]\n" $DJSStatus
+	exit 0
+}
+
+#############################################################################
+# Function: DJSShowSteps                                                    #
+#############################################################################
+# Arguments:                                                                #
+# Display all steps for the current script                                  #
+#############################################################################
+DJShowSteps()
+{
+	echo "Steps for $ShellName:"
+	sed -e 's/^[ \t]*//' $0 | grep "^Step" | awk '{ printf("  -Step %s: ",$2); $1=""; $2=""; gsub("\"","",$0); print $0;}'
+	exit 0
+}
+
+
+#############################################################################
+# Function: DJSShowHelp                                                     #
+#############################################################################
+# Arguments: Show help message, for DJS script                              #
+# This function show script command line help, and exit                     #
+#############################################################################
+ShowHelp()
+{
+	printf "%-45s (powered by DjeShellSteps v%s)\n" $0 $DJSVersion
+	echo "                                              (c) Jerome DESMOULINS"
+	echo "Usage:"
+	
+	OIFS=$IFS; IFS="|";
+	HelpArray=($Help);
+
+	Options=""
+	for ((i=0; i<${#HelpArray[@]}; ++i));
+	do
+		myOpt="$(echo ${HelpArray[$i]} | cut -d';'  -f1)"
+		Options=$Options" "$myOpt
+	done
+
+	echo "  $0$Options"
+
+	if [ ! -z "$Help" ]
+	then
+		echo "Where:"
+	fi	
+	for ((i=0; i<${#HelpArray[@]}; ++i));
+	do
+		myOpt="$(echo ${HelpArray[$i]} | cut -d';'  -f1)"
+		myDesc="$(echo ${HelpArray[$i]} | cut -d';'  -f2)"
+		printf "     %-20s %-57s\n" $myOpt $myDesc
+	done
+	IFS=$OIFS;
+
+	echo ""
+	echo "Common parameters:"
+	echo "  --fromstep X     to restart from step X"
+	echo "  --fromscratch    to restart from begining (ignore previous error)"
+	echo "  --help           to display this help message"
+	echo "  --debug          to enable debug mode"
+	
+	echo "  --stdout         to force output to stdout (logfile still exist)"
+	echo "  --stdoutsummary  to write summary informations to stdout"
+
+	echo "  --status         to display your script status (running or not)"
+	echo "  --kill           to kill running script"
+    echo "  --lastlog        to display last log file"
+	echo "  --liststeps      to list all steps"
+	
+	exit 0
+}
+
+
 #############################################################################
 # Function: BeginSteps                                                      #
 #############################################################################
@@ -162,6 +289,7 @@ WriteSummaryInfo()
 BeginSteps()
 {
   set +x
+  InternalDebug "IN"
   DJSStartTime=`date +%s`
   ### Creating Log File ###
   touch $LogFile
@@ -175,17 +303,19 @@ BeginSteps()
   then
     OldPID=`cat $LogDir/$ShellName.pid`
     echo "`TimeBanner` Failed to start $ShellName. Another instance of this script is already running with PID $OldPID (Error 504)"
-	exit 504
+    exit 504
   fi  
   ### Checking for rst file ###
   if [ -f $LogDir/$ShellName.rst ]
   then
     DJSRestartStep=`cat $LogDir/$ShellName.rst | awk '{ print $2}'`
-	WriteSummaryInfo "Shell is restarting at step $DJSRestartStep"
-	WriteSummaryInfo "Logfile is: ${LogFile}"
+    WiteSummaryInfo "Shell is restarting at step $DJSRestartStep"
+    WriteSummaryInfo "Logfile is: ${LogFile}"
+	Step=$DJSRestartStep
   else
     WriteSummaryInfo "Shell $ShellName is starting"
-	WriteSummaryInfo "Logfile is: ${LogFile}"
+    WriteSummaryInfo "Logfile is: ${LogFile}"
+    Step=0
   fi  
   exec 6>&1 # Redirect all outputs to logfile
   exec 3>&1
@@ -232,6 +362,7 @@ BeginSteps()
   # Launch ExitStep at the end of Shell Script
   trap 'ExitStep' 0
   set -e
+  InternalDebug "OUT"
 }
 
 
@@ -244,6 +375,7 @@ BeginSteps()
 Step()
 {
   set +x
+  InternalDebug "IN ($1)"
   Step=$1
   exec 1>&6 6>&-      # Restaure stdout and close File Descriptor #6.
   if [ $DJSMustRestart -eq 1 -a $Step -lt $DJSRestartStep ] 
@@ -288,7 +420,8 @@ Step()
   if [ $DJSDebugMode -eq 1 ]
   then
     set -x
-  fi	
+  fi
+  InternalDebug "OUT ($Step)"  
 }
 
 
@@ -301,19 +434,23 @@ Step()
 EndSteps()
 {
   set +x
+  InternalDebug "IN"
   echo
   echo
   WriteSeparator
   printf "# End of %-45s %-21s #\n" $ShellName "`TimeBanner`"
   DJSEndTime=`date +%s`
-  DjeExecTime=`expr $DJSEndTime - $DJSStartTime`
-  printf "# Execution time: %-58s #\n" "$DjeExecTime second(s)."
+  InternalDebug "Computing Execution Time ($DJSEndTime - $DJSStartTime)"
+  DjeExecTime=`expr $DJSEndTime - $DJSStartTime|cat`
+  printf "# Execution time: %-58s #\n" "$DjeExecTime second(s)"
   WriteSeparator
   echo
   DJSEndOfSteps=1
+  InternalDebug "DJSEndOfSteps=$DJSEndOfSteps"
   exec 1>&6 6>&-      # Restaure stdout and close File Descriptor #6.
   WriteSummaryInfo "Shell $ShellName is SUCCESS."
   WriteSummaryInfo "Execution time: $DjeExecTime seconds."
+  InternalDebug "OUT"
 }
 
 
@@ -326,6 +463,8 @@ EndSteps()
 ExitStep()
 {
   ReturnCode=$?
+  InternalDebug "IN"
+  InternalDebug "ReturnCode=$ReturnCode DJSEndOfSteps=$DJSEndOfSteps"
   set +x
   if [ $DJSEndOfSteps -ne 1 ]; then
     echo
@@ -341,7 +480,7 @@ ExitStep()
     printf "# End of %-45s %-21s #\n" $ShellName "`TimeBanner`"
     printf "# PROBLEM ON THIS STEP - EXITING SHELL SCRIPT WITH RETURN CODE %-13s #\n" $ReturnCode
     DJSEndTime=`date +%s`
-    printf "# Execution time: %-58s #\n" "`expr $DJSEndTime - $DJSStartTime` second(s)."
+    printf "# Execution time: %-58s #\n" "`expr $DJSEndTime - $DJSStartTime|cat` second(s)."
     WriteSeparator
     echo "STEP $Step - RETURN CODE $ReturnCode" > $LogDir/$ShellName.rst
     echo "Info: Restart file has been created, for step $Step"
@@ -357,6 +496,7 @@ ExitStep()
   # If all is right, we delete the restart file
   RemoveRstFile 
   RemovePidFile
+  InternalDebug "OUT"
 }
 
 
@@ -364,10 +504,12 @@ ExitStep()
 DJSScriptPath=`dirname $0`
 if test -f "$DJSScriptPath/djeshellsteps.cfg"
 then
-	ReadConfigFile "$DJSScriptPath/djeshellsteps.cfg"
+	InternalDebug "Reading Config file $DJSScriptPath/djeshellsteps.cfg"
+	ReadConfigFile "$DJSScriptPath/djeshellsteps.cfg" > /dev/null
 elif test -f "$DJSScriptPath/../cfg/djeshellsteps.cfg"
 then
-	ReadConfigFile "$DJSScriptPath/../cfg/djeshellsteps.cfg"
+	InternalDebug "Reading Config file $DJSScriptPath/../cfg/djeshellsteps.cfg"
+	ReadConfigFile "$DJSScriptPath/../cfg/djeshellsteps.cfg" > /dev/null
 fi
 
 ### External variables ###
@@ -388,6 +530,12 @@ do
 	  ### Debug Mode ###
        --debug) 
 	     DJSDebugMode=1
+		 shift
+		 ;;
+	  ### Debug Mode ###
+       --internaldebug) 
+	     DJSDebugMode=1
+             DJSInternalDebug=1
 		 shift
 		 ;;
       ### Restart from specific step ###		 
@@ -438,10 +586,25 @@ do
 	    shift
         DJSOption_SummaryInfosToStdout=1
 		;;
+	### Get script status ###
+	 --status)
+		shift
+		DJSDisplayStatus
+		;;
+	### Show script steps ###
+	 --liststeps)
+		shift
+		DJShowSteps
+		;;
+	### Show help ###
+     --help)
+       shift
+       ShowHelp
+       ;;	   
     esac
 done
 
-BeginSteps
 #############################################################################
 #                              End of script                                #
 #############################################################################
+
